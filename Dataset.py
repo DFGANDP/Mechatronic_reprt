@@ -179,10 +179,125 @@ class InstagramDataset:
 
 
 
+class Facenet:
 
+  def __init__(self, show=False):
+    self.vector_path = os.getcwd()+"/InstagramDataset/face(vector)/"
+    self.model = tf.keras.models.load_model(
+    "/content/facenet_keras.h5", custom_objects=None, compile=True, options=None)
+    if show ==True:
+      print("FaceNet Podsumowanie wej/wyj:")
+      print(self.model.inputs)
+      print(self.model.outputs)
+    print(type(self.model))
+    print(self.model)
+
+  def get_feature_vector(self, filename, required_size=(160, 160)):
+    '''
+    Bierze zdjecie wycina z niego twarz i zwraca je jako nparray
+    '''
+    
+	# load image from file
+    image = Image.open(filename)
+    # convert to RGB, if needed
+    image = image.convert('RGB')
+    # convert to array
+    pixels = np.asarray(image)
+    # create the detector, using default weights
+    detector = MTCNN()
+    # detect faces in the image
+    results = detector.detect_faces(pixels)
+    print(type(results))
+    print(results)
+    try:
+      # extract the bounding box from the first face
+      x1, y1, width, height = results[0]['box']
+    except IndexError:
+      print("{} nie wykryto twarzy".format(filename))
+      # zatrzymac fnkcje cala
+    # bug fix
+    if not results:
+      print("nie wykryto twarzy")
+      return
+    x1, y1 = abs(x1), abs(y1)
+    x2, y2 = x1 + width, y1 + height
+    # extract the face
+    face = pixels[y1:y2, x1:x2]
+    # resize pixels to the model size
+    image = Image.fromarray(face)
+    image = image.resize(required_size)
+    face_array = np.asarray(image)
+    '''
+    Bierze twarz jako nparray i zwraca jako pukt w 128 wymiarowej przestzreni
+    jesli save_embedding jest True to zapisuje do dir face(vector)
+    '''
+    
+    # scale pixel values
+    face_array = face_array.astype('float32')
+    # standardize pixel values across channels (global)
+    mean, std = face_array.mean(), face_array.std()
+    face_array = (face_array - mean) / std
+    # transform face into one sample
+    samples = np.expand_dims(face_array, axis=0)
+    # make prediction to get embedding
+    yhat = self.model.predict(samples)
+    return yhat[0]
+
+  def add_data_face_embeddings(self):
+    '''
+    All_data
+    robi wektory ze wszytskich dla kazdego
+    '''
+    for name in os.listdir(os.getcwd()+"/InstagramDataset/face(image)/"):
+      for file in os.listdir(os.getcwd()+"/InstagramDataset/face(image)/"+name):
+        vector_pth = self.vector_path+name+"/"+file
+        feature_vector = self.get_feature_vector(os.getcwd()+"/InstagramDataset/face(image)/"+name+"/"+file)
+        print(type(feature_vector))
+        try:
+          if feature_vector.size == 0:
+            print(file,"PUSTY POMIJA")
+          else:
+            np.save(vector_pth.replace(".jpg", ""), feature_vector)
+        except AttributeError:
+          pass
+
+
+  def findCosineDistance(self, source_representation, test_representation):
+    """"
+    Funckja do porownywania dwuch punktow w przestrzeni niezaleznie od ilosci wymiarow
+    """
+    a = np.matmul(np.transpose(source_representation), test_representation)
+    b = np.sum(np.multiply(source_representation, source_representation))
+    c = np.sum(np.multiply(test_representation, test_representation))
+    return 1 - (a / (np.sqrt(b) * np.sqrt(c)))
+
+
+  def compare_face(self, face_embedding="/content/emixxly.npy",save_df=False):
+    '''
+    porownuje twarze aktualnie posiadane w bazie danych do wybranej
+
+    zwraca pd dataframe
+    '''
+    startpath="/content/InstagramDataset/face(vector)/"
+    df = pd.DataFrame()
+    emixxly_vector = np.load(face_embedding, allow_pickle=True) # TU ZMIENIC NA SCIEZKE TAM GDZIE BEDZIE EMIXXLY
+    for name in os.listdir(startpath):
+      for file in os.listdir(startpath+name):
+        vector = np.load(startpath+name+"/"+file,allow_pickle=True)
+        result = self.findCosineDistance(emixxly_vector,vector)
+        df_npy = pd.DataFrame(result, columns = [file], index = ["podobienstwo"])
+        df_npy = df_npy.T
+        df = df.append(df_npy)
+        
+    df = df.sort_values(by=['podobienstwo'])
+    if save_df == True:
+      df.to_csv('Suki.csv') 
+    return df
+
+facenet = Facenet() # kiedys nazywalo sie generator wiec jesli uzywam starych komend to pozmieniac
 
         
-
+data = InstagramDataset()
 
 
 #data.iterate(data.sortuj, path_to_dir="/content/InstagramDataset/Image/", main_dir=True)
@@ -205,7 +320,7 @@ class InstagramDataset:
 #data.create_faceapp_data(copy_files=True) # Przekopiowywanie do face app
 
 
-data = InstagramDataset()
+
 
 
 
